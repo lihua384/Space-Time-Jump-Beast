@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>像素跃迁兽动态壁纸</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #000;
+            color: #e0f7ff;
+            font-family: 'Courier New', monospace;
+            min-height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        
+        .time-display {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+            font-size: 100px;
+            color: rgba(255, 255, 255, 0.95);
+            text-shadow: 
+                0 0 15px rgba(0, 255, 234, 0.8),
+                0 0 30px rgba(0, 255, 234, 0.6),
+                0 0 45px rgba(0, 255, 234, 0.4);
+            letter-spacing: 4px;
+            font-weight: 300;
+            user-select: none;
+            pointer-events: none;
+            text-align: center;
+            font-family: 'Arial', sans-serif;
+            font-weight: 400;
+        }
+        
+        .date-display {
+            position: absolute;
+            top: calc(50% + 40px);
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            font-size: 22px;
+            color: rgba(220, 240, 255, 0.85);
+            text-shadow: 0 0 12px rgba(160, 230, 255, 0.6);
+            letter-spacing: 1.5px;
+            font-weight: 300;
+            user-select: none;
+            pointer-events: none;
+            text-align: center;
+            width: 100%;
+            margin-top: 10px;
+        }
+        
+        @media (max-width: 1200px) {
+            .time-display {
+                font-size: 85px;
+                letter-spacing: 3px;
+            }
+            
+            .date-display {
+                font-size: 20px;
+                top: calc(50% + 35px);
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .time-display {
+                font-size: 65px;
+                letter-spacing: 2px;
+            }
+            
+            .date-display {
+                font-size: 18px;
+                top: calc(50% + 30px);
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .time-display {
+                font-size: 50px;
+                letter-spacing: 1px;
+            }
+            
+            .date-display {
+                font-size: 16px;
+                top: calc(50% + 25px);
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="mainCanvas"></canvas>
+    <div class="time-display" id="timeDisplay">00:00:00</div>
+    <div class="date-display" id="dateDisplay">2023年1月1日 星期一</div>
+
+    <script>
+        // 初始化画布
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        // 时间显示更新函数
+        function updateTime() {
+            const now = new Date();
+            
+            // 更新时间显示
+            const timeStr = now.toLocaleTimeString('zh-CN', { hour12: false });
+            document.getElementById('timeDisplay').textContent = timeStr;
+            
+            // 更新日期显示
+            const dateStr = now.toLocaleDateString('zh-CN', { 
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                weekday: 'long'
+            });
+            document.getElementById('dateDisplay').textContent = dateStr;
+        }
+        
+        // 初始更新时间
+        updateTime();
+        // 每秒更新时间
+        setInterval(updateTime, 1000);
+        
+        // 状态变量
+        let creatures = [];
+        let foods = [];
+        let effects = [];
+        let backgroundParticles = [];
+        let energyFields = [];
+        let lastClickTime = 0;
+        let timeOfDay = 0; // 用于控制背景色调变化
+        
+        // 初始化背景粒子
+        function initBackgroundParticles() {
+            backgroundParticles = [];
+            const particleCount = Math.min(200, Math.floor((canvas.width * canvas.height) / 5000));
+            
+            for (let i = 0; i < particleCount; i++) {
+                backgroundParticles.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    size: Math.random() * 1.5 + 0.5,
+                    speedX: Math.random() * 0.2 - 0.1,
+                    speedY: Math.random() * 0.2 - 0.1,
+                    color: `rgba(${Math.floor(Math.random() * 100 + 100)}, ${Math.floor(Math.random() * 150 + 100)}, ${Math.floor(Math.random() * 200 + 50)}, ${Math.random() * 0.3 + 0.1})`,
+                    originalX: 0,
+                    originalY: 0,
+                    offset: Math.random() * Math.PI * 2
+                });
+            }
+        }
+        
+        // 初始化能量场
+        function initEnergyFields() {
+            energyFields = [];
+            const fieldCount = 3;
+            
+            for (let i = 0; i < fieldCount; i++) {
+                energyFields.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    radius: Math.random() * 100 + 50,
+                    pulse: Math.random() * Math.PI * 2,
+                    pulseSpeed: Math.random() * 0.02 + 0.01,
+                    color: `rgba(${Math.floor(Math.random() * 100)}, ${Math.floor(Math.random() * 200)}, ${Math.floor(Math.random() * 255)}, 0.05)`
+                });
+            }
+        }
+        
+        // 粒子类
+        class Particle {
+            constructor(x, y, color = '#00ffea') {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 5 + 2;
+                this.speedX = Math.random() * 3 - 1.5;
+                this.speedY = Math.random() * 3 - 1.5;
+                this.color = color;
+                this.life = 100;
+                this.gravity = 0.05;
+                this.friction = 0.97;
+            }
+            
+            update() {
+                this.speedX *= this.friction;
+                this.speedY *= this.friction;
+                this.speedY += this.gravity;
+                
+                this.x += this.speedX;
+                this.y += this.speedY;
+                
+                this.life--;
+                this.size *= 0.98;
+                
+                return this.life > 0;
+            }
+            
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life / 100;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+        
+        // 食物类
+        class Food {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.size = 8;
+                this.energy = 50;
+                this.color = '#ffaa00';
+                this.pulse = 0;
+            }
+            
+            update() {
+                this.pulse += 0.1;
+                this.size = 8 + Math.sin(this.pulse) * 3;
+                
+                // 食物逐渐消失
+                this.energy *= 0.995;
+                
+                return this.energy > 5;
+            }
+            
+            draw() {
+                ctx.save();
+                
+                // 发光效果
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+                
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.restore();
+            }
+        }
+        
+        // 像素跃迁兽类
+        class PixelCreature {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.size = 30;
+                this.energy = 75;
+                this.hue = Math.random() * 360;
+                this.saturation = 80;
+                this.lightness = 60;
+                
+                // 运动属性
+                this.speedX = 0;
+                this.speedY = 0;
+                this.targetX = x;
+                this.targetY = y;
+                this.velocity = 0.05;
+                this.wobble = 0;
+                this.wobbleSpeed = 0.05;
+                
+                // 行为属性
+                this.mood = '好奇'; // 好奇, 兴奋, 平静, 饥饿
+                this.moodColor = '#00ff00';
+                this.attention = 1.0; // 对鼠标的注意力
+                
+                // 像素化属性
+                this.pixelSize = 3;
+                this.pixelDistortion = 0;
+                
+                // 互动属性
+                this.lastInteraction = Date.now();
+                
+                // 轨迹点
+                this.trail = [];
+                this.trailLength = 10;
+            }
+            
+            // 更新心情
+            updateMood() {
+                const now = Date.now();
+                const timeSinceInteraction = now - this.lastInteraction;
+                
+                if (this.energy < 30) {
+                    this.mood = '饥饿';
+                    this.moodColor = '#ff3300';
+                } else if (timeSinceInteraction > 15000) {
+                    this.mood = '平静';
+                    this.moodColor = '#0099ff';
+                } else if (timeSinceInteraction < 3000) {
+                    this.mood = '兴奋';
+                    this.moodColor = '#ffff00';
+                } else {
+                    this.mood = '好奇';
+                    this.moodColor = '#00ff00';
+                }
+            }
+            
+            // 寻找最近的食物
+            findNearestFood() {
+                if (foods.length === 0) return null;
+                
+                let nearest = null;
+                let nearestDist = Infinity;
+                
+                for (const food of foods) {
+                    const dx = food.x - this.x;
+                    const dy = food.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < nearestDist) {
+                        nearestDist = dist;
+                        nearest = food;
+                    }
+                }
+                
+                return nearestDist < 300 ? nearest : null;
+            }
+            
+            // 更新位置和行为
+            update(mouseX, mouseY) {
+                this.wobble += this.wobbleSpeed;
+                
+                // 更新心情
+                this.updateMood();
+                
+                // 添加轨迹点
+                this.trail.push({x: this.x, y: this.y, size: this.size});
+                if (this.trail.length > this.trailLength) {
+                    this.trail.shift();
+                }
+                
+                // 根据心情调整行为
+                let target = null;
+                
+                if (this.mood === '饥饿') {
+                    // 寻找食物
+                    target = this.findNearestFood();
+                    if (target) {
+                        this.targetX = target.x;
+                        this.targetY = target.y;
+                        this.velocity = 0.1;
+                    } else {
+                        // 没有食物时缓慢移动
+                        if (Math.random() < 0.02) {
+                            this.targetX = this.x + (Math.random() * 200 - 100);
+                            this.targetY = this.y + (Math.random() * 200 - 100);
+                        }
+                        this.velocity = 0.03;
+                    }
+                } else if (this.mood === '兴奋') {
+                    // 积极跟随鼠标
+                    this.targetX = mouseX;
+                    this.targetY = mouseY;
+                    this.velocity = 0.08;
+                    this.attention = 1.2;
+                } else if (this.mood === '平静') {
+                    // 缓慢随机移动
+                    if (Math.random() < 0.02) {
+                        this.targetX = this.x + (Math.random() * 200 - 100);
+                        this.targetY = this.y + (Math.random() * 200 - 100);
+                    }
+                    this.velocity = 0.03;
+                    this.attention = 0.7;
+                } else {
+                    // 默认行为：跟随鼠标但有一定随机性
+                    this.targetX = mouseX + (Math.random() * 100 - 50);
+                    this.targetY = mouseY + (Math.random() * 100 - 50);
+                    this.velocity = 0.05;
+                    this.attention = 1.0;
+                }
+                
+                // 边界检查（留出边缘空间）
+                const margin = 50;
+                this.targetX = Math.max(margin, Math.min(canvas.width - margin, this.targetX));
+                this.targetY = Math.max(margin, Math.min(canvas.height - margin, this.targetY));
+                
+                // 移动到目标
+                const dx = this.targetX - this.x;
+                const dy = this.targetY - this.y;
+                
+                this.speedX += dx * this.velocity;
+                this.speedY += dy * this.velocity;
+                
+                // 限制最大速度
+                const speed = Math.sqrt(this.speedX * this.speedX + this.speedY * this.speedY);
+                const maxSpeed = 4 * (this.attention || 1);
+                
+                if (speed > maxSpeed) {
+                    this.speedX = (this.speedX / speed) * maxSpeed;
+                    this.speedY = (this.speedY / speed) * maxSpeed;
+                }
+                
+                // 应用速度
+                this.x += this.speedX;
+                this.y += this.speedY;
+                
+                // 应用摩擦力
+                this.speedX *= 0.95;
+                this.speedY *= 0.95;
+                
+                // 消耗能量
+                this.energy -= 0.015;
+                if (this.energy < 0) this.energy = 0;
+                if (this.energy > 100) this.energy = 100;
+                
+                // 检查是否吃到食物
+                for (let i = foods.length - 1; i >= 0; i--) {
+                    const food = foods[i];
+                    const dx = food.x - this.x;
+                    const dy = food.y - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < this.size + food.size) {
+                        this.energy += food.energy;
+                        foods.splice(i, 1);
+                        
+                        // 创建进食效果
+                        for (let j = 0; j < 8; j++) {
+                            effects.push(new Particle(food.x, food.y, '#ffaa00'));
+                        }
+                        
+                        // 更新心情
+                        this.lastInteraction = Date.now();
+                    }
+                }
+                
+                // 像素扭曲效果（基于速度和心情）
+                this.pixelDistortion = Math.min(1, speed / 3);
+                
+                // 颜色变化
+                this.hue += 0.5;
+                if (this.hue > 360) this.hue -= 360;
+                
+                // 影响背景粒子
+                this.influenceBackgroundParticles();
+            }
+            
+            // 影响背景粒子
+            influenceBackgroundParticles() {
+                const influenceRadius = 150;
+                const pushStrength = 0.5;
+                
+                for (let particle of backgroundParticles) {
+                    const dx = particle.x - this.x;
+                    const dy = particle.y - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < influenceRadius) {
+                        // 根据距离计算推动力
+                        const force = (influenceRadius - distance) / influenceRadius * pushStrength;
+                        
+                        // 推动粒子远离生物
+                        particle.x += (dx / distance) * force;
+                        particle.y += (dy / distance) * force;
+                    }
+                }
+            }
+            
+            // 绘制生物
+            draw() {
+                // 绘制轨迹
+                this.drawTrail();
+                
+                ctx.save();
+                
+                // 应用像素化效果
+                if (this.pixelDistortion > 0.1) {
+                    const pixelatedSize = Math.max(2, this.pixelSize * (1 - this.pixelDistortion * 0.5));
+                    this.drawPixelated(pixelatedSize);
+                } else {
+                    this.drawOrganic();
+                }
+                
+                // 绘制情绪光环（只在兴奋或饥饿时）
+                if (this.mood === '兴奋' || this.mood === '饥饿') {
+                    ctx.strokeStyle = this.moodColor;
+                    ctx.lineWidth = 2;
+                    ctx.globalAlpha = 0.2;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size + 8 + Math.sin(this.wobble) * 4, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                
+                ctx.restore();
+            }
+            
+            // 绘制轨迹
+            drawTrail() {
+                for (let i = 0; i < this.trail.length; i++) {
+                    const point = this.trail[i];
+                    const alpha = i / this.trail.length * 0.3;
+                    
+                    ctx.save();
+                    ctx.globalAlpha = alpha;
+                    ctx.fillStyle = `hsl(${this.hue}, ${this.saturation}%, ${this.lightness}%)`;
+                    ctx.beginPath();
+                    ctx.arc(point.x, point.y, point.size * (i / this.trail.length), 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+            }
+            
+            // 绘制有机形态
+            drawOrganic() {
+                const wobbleX = Math.sin(this.wobble) * 4;
+                const wobbleY = Math.cos(this.wobble * 1.3) * 4;
+                
+                // 主体
+                ctx.fillStyle = `hsl(${this.hue}, ${this.saturation}%, ${this.lightness}%)`;
+                ctx.beginPath();
+                ctx.ellipse(
+                    this.x + wobbleX, 
+                    this.y + wobbleY, 
+                    this.size, 
+                    this.size * 0.8, 
+                    0, 0, Math.PI * 2
+                );
+                ctx.fill();
+                
+                // 高光
+                ctx.fillStyle = `hsl(${this.hue}, ${this.saturation}%, ${this.lightness + 20}%)`;
+                ctx.beginPath();
+                ctx.ellipse(
+                    this.x - this.size * 0.3 + wobbleX, 
+                    this.y - this.size * 0.3 + wobbleY, 
+                    this.size * 0.4, 
+                    this.size * 0.3, 
+                    0, 0, Math.PI * 2
+                );
+                ctx.fill();
+                
+                // 眼睛
+                const eyeSize = this.size * 0.15;
+                const eyeOffset = this.size * 0.4;
+                
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.arc(this.x - eyeOffset + wobbleX, this.y + wobbleY, eyeSize, 0, Math.PI * 2);
+                ctx.arc(this.x + eyeOffset + wobbleX, this.y + wobbleY, eyeSize, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // 眼睛高光
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(this.x - eyeOffset - eyeSize*0.3 + wobbleX, this.y - eyeSize*0.3 + wobbleY, eyeSize*0.4, 0, Math.PI * 2);
+                ctx.arc(this.x + eyeOffset - eyeSize*0.3 + wobbleX, this.y - eyeSize*0.3 + wobbleY, eyeSize*0.4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            // 绘制像素化形态
+            drawPixelated(pixelSize) {
+                const gridSize = pixelSize;
+                const halfGrid = gridSize / 2;
+                
+                // 绘制像素化主体
+                for (let dx = -this.size; dx <= this.size; dx += gridSize) {
+                    for (let dy = -this.size; dy <= this.size; dy += gridSize) {
+                        const distance = Math.sqrt(dx*dx + dy*dy * 1.5);
+                        
+                        if (distance < this.size) {
+                            // 计算像素位置
+                            const pixelX = Math.floor((this.x + dx) / gridSize) * gridSize + halfGrid;
+                            const pixelY = Math.floor((this.y + dy) / gridSize) * gridSize + halfGrid;
+                            
+                            // 根据距离调整颜色
+                            const distFactor = 1 - (distance / this.size);
+                            const lightness = this.lightness - 20 + distFactor * 40;
+                            
+                            ctx.fillStyle = `hsl(${this.hue}, ${this.saturation}%, ${lightness}%)`;
+                            ctx.fillRect(pixelX - halfGrid, pixelY - halfGrid, gridSize, gridSize);
+                        }
+                    }
+                }
+                
+                // 绘制简单的眼睛
+                const eyeSize = gridSize * 2;
+                ctx.fillStyle = '#000';
+                ctx.fillRect(
+                    this.x - this.size * 0.4 - eyeSize/2, 
+                    this.y - eyeSize/2, 
+                    eyeSize, eyeSize
+                );
+                ctx.fillRect(
+                    this.x + this.size * 0.4 - eyeSize/2, 
+                    this.y - eyeSize/2, 
+                    eyeSize, eyeSize
+                );
+            }
+        }
+        
+        // 创建初始生物
+        function createInitialCreature() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            creatures = [new PixelCreature(centerX, centerY)];
+        }
+        
+        // 初始化
+        createInitialCreature();
+        initBackgroundParticles();
+        initEnergyFields();
+        
+        // 鼠标交互
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+        let mouseIsMoving = false;
+        let mouseStillTimer = 0;
+        
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            mouseIsMoving = true;
+            mouseStillTimer = 0;
+            
+            // 记录主生物的最后互动时间
+            if (creatures[0]) {
+                creatures[0].lastInteraction = Date.now();
+            }
+            
+            // 鼠标移动时影响背景粒子
+            const mouseInfluenceRadius = 100;
+            for (let particle of backgroundParticles) {
+                const dx = particle.x - mouseX;
+                const dy = particle.y - mouseY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < mouseInfluenceRadius) {
+                    // 推动粒子远离鼠标
+                    const force = (mouseInfluenceRadius - distance) / mouseInfluenceRadius * 0.8;
+                    particle.x += (dx / distance) * force;
+                    particle.y += (dy / distance) * force;
+                }
+            }
+        });
+        
+        canvas.addEventListener('click', (e) => {
+            // 单击：在点击位置创建食物
+            foods.push(new Food(e.clientX, e.clientY));
+            
+            // 添加点击效果
+            for (let i = 0; i < 10; i++) {
+                effects.push(new Particle(e.clientX, e.clientY, '#ffaa00'));
+            }
+        });
+        
+        // 更新背景色调（基于时间）
+        function updateBackgroundTint() {
+            const now = new Date();
+            const hours = now.getHours();
+            const minutes = now.getMinutes();
+            
+            // 根据时间计算色调
+            // 0-6点：深夜蓝色，6-12点：清晨紫色，12-18点：白天青色，18-24点：傍晚橙红色
+            timeOfDay = (hours + minutes / 60) / 24;
+            
+            // 创建时间渐变
+            let hue;
+            if (hours < 6) {
+                hue = 220 + (hours / 6) * 20; // 深夜到黎明
+            } else if (hours < 12) {
+                hue = 240 + ((hours - 6) / 6) * 60; // 黎明到中午
+            } else if (hours < 18) {
+                hue = 300 + ((hours - 12) / 6) * 60; // 中午到傍晚
+            } else {
+                hue = 360 + ((hours - 18) / 6) * 20; // 傍晚到深夜
+            }
+            
+            return hue % 360;
+        }
+        
+        // 背景绘制函数 - 增强版
+        function drawBackground() {
+            // 获取当前时间色调
+            const currentHue = updateBackgroundTint();
+            
+            // 创建渐变背景
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, `hsla(${currentHue}, 60%, 8%, 0.9)`);
+            gradient.addColorStop(0.5, `hsla(${currentHue + 20}, 40%, 12%, 0.8)`);
+            gradient.addColorStop(1, `hsla(${currentHue - 20}, 50%, 6%, 0.9)`);
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制能量场
+            drawEnergyFields();
+            
+            // 绘制背景粒子
+            drawBackgroundParticles();
+            
+            // 绘制光晕效果
+            drawLightGlows();
+        }
+        
+        // 绘制能量场
+        function drawEnergyFields() {
+            for (let field of energyFields) {
+                field.pulse += field.pulseSpeed;
+                
+                // 动态半径
+                const currentRadius = field.radius + Math.sin(field.pulse) * 20;
+                
+                // 创建渐变
+                const gradient = ctx.createRadialGradient(
+                    field.x, field.y, 0,
+                    field.x, field.y, currentRadius
+                );
+                gradient.addColorStop(0, field.color);
+                gradient.addColorStop(0.5, `rgba(0, 0, 0, 0)`);
+                gradient.addColorStop(1, `rgba(0, 0, 0, 0)`);
+                
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(field.x, field.y, currentRadius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // 缓慢移动能量场
+                field.x += Math.sin(field.pulse * 0.5) * 0.2;
+                field.y += Math.cos(field.pulse * 0.3) * 0.2;
+                
+                // 边界检查
+                if (field.x < 0) field.x = canvas.width;
+                if (field.x > canvas.width) field.x = 0;
+                if (field.y < 0) field.y = canvas.height;
+                if (field.y > canvas.height) field.y = 0;
+            }
+        }
+        
+        // 绘制背景粒子
+        function drawBackgroundParticles() {
+            for (let particle of backgroundParticles) {
+                // 更新粒子位置
+                particle.x += particle.speedX;
+                particle.y += particle.speedY;
+                
+                // 边界检查
+                if (particle.x < 0) particle.x = canvas.width;
+                if (particle.x > canvas.width) particle.x = 0;
+                if (particle.y < 0) particle.y = canvas.height;
+                if (particle.y > canvas.height) particle.y = 0;
+                
+                // 轻微随机运动
+                particle.speedX += (Math.random() - 0.5) * 0.02;
+                particle.speedY += (Math.random() - 0.5) * 0.02;
+                
+                // 限制速度
+                const speed = Math.sqrt(particle.speedX * particle.speedX + particle.speedY * particle.speedY);
+                const maxSpeed = 0.3;
+                if (speed > maxSpeed) {
+                    particle.speedX = (particle.speedX / speed) * maxSpeed;
+                    particle.speedY = (particle.speedY / speed) * maxSpeed;
+                }
+                
+                // 绘制粒子
+                ctx.save();
+                ctx.fillStyle = particle.color;
+                ctx.beginPath();
+                ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+        
+        // 绘制光晕效果
+        function drawLightGlows() {
+            // 在屏幕边缘添加光晕
+            const glowCount = 4;
+            for (let i = 0; i < glowCount; i++) {
+                const angle = (i / glowCount) * Math.PI * 2 + Date.now() * 0.0001;
+                const radius = Math.min(canvas.width, canvas.height) * 0.4;
+                const x = canvas.width / 2 + Math.cos(angle) * radius;
+                const y = canvas.height / 2 + Math.sin(angle) * radius;
+                
+                const gradient = ctx.createRadialGradient(x, y, 0, x, y, 150);
+                gradient.addColorStop(0, 'rgba(100, 200, 255, 0.1)');
+                gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                
+                ctx.save();
+                ctx.globalAlpha = 0.3;
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(x, y, 150, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+        
+        // 动画循环
+        function animate() {
+            // 清除画布
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制背景
+            drawBackground();
+            
+            // 更新和绘制食物
+            for (let i = foods.length - 1; i >= 0; i--) {
+                const food = foods[i];
+                if (!food.update()) {
+                    foods.splice(i, 1);
+                } else {
+                    food.draw();
+                }
+            }
+            
+            // 更新和绘制生物
+            for (let i = creatures.length - 1; i >= 0; i--) {
+                const creature = creatures[i];
+                
+                // 移除能量耗尽的生物
+                if (creature.energy <= 0) {
+                    creatures.splice(i, 1);
+                    continue;
+                }
+                
+                creature.update(mouseX, mouseY);
+                creature.draw();
+            }
+            
+            // 更新和绘制特效粒子
+            for (let i = effects.length - 1; i >= 0; i--) {
+                const effect = effects[i];
+                if (!effect.update()) {
+                    effects.splice(i, 1);
+                } else {
+                    effect.draw();
+                }
+            }
+            
+            // 如果没有生物了，创建一个新的
+            if (creatures.length === 0) {
+                createInitialCreature();
+            }
+            
+            // 继续动画循环
+            requestAnimationFrame(animate);
+        }
+        
+        // 窗口大小调整
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            createInitialCreature();
+            initBackgroundParticles();
+            initEnergyFields();
+        });
+        
+        // 启动动画
+        animate();
+    </script>
+</body>
+</html>
